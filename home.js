@@ -73,7 +73,10 @@ async function enrichWithManifest(base) {
                icons.find(i => (i.sizes || '').includes('512')) ||
                icons[0]
   const out = { ...base }
-  if (m.short_name || m.name) out.name = m.short_name || m.name
+  // Keep base.name (the path segment under /public/apps/<name>/) as the
+  // visible label — two installs of the same app under different paths
+  // (e.g. chat vs chat-x) should read distinctly. Manifest contributes
+  // icon + color only.
   if (m.theme_color) { out.color = m.theme_color; out.color2 = m.theme_color }
   if (pick && pick.src) {
     try { out.iconUrl = new URL(pick.src, base.url).toString() } catch {}
