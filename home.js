@@ -26,7 +26,9 @@ const KNOWN = {
   mindstr:    { glyph: '\u{1F9E0}',  color: '#a855f7', color2: '#c084fc' },
   charlie:    { glyph: '\u{1F916}',  color: '#10b981', color2: '#059669' },
   forum:      { glyph: '\u{1F4AD}',  color: '#ec4899', color2: '#f472b6' },
-  transcribe: { glyph: '\u{1F3A4}',  color: '#06b6d4', color2: '#22d3ee' }
+  transcribe: { glyph: '\u{1F3A4}',  color: '#06b6d4', color2: '#22d3ee' },
+  store:      { glyph: '\u{1F6CD}',  color: '#7c4dff', color2: '#a78bfa' },
+  git:        { glyph: '\u{1F500}',  color: '#1f8fff', color2: '#60a5fa' }
 }
 
 const FALLBACK_COLORS = [
