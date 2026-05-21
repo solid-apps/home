@@ -78,20 +78,6 @@ async function render() {
 
   const style = document.createElement('style')
   style.textContent = `
-    @keyframes bgShift {
-      0%, 100% { background-position: 0% 50%; }
-      50%      { background-position: 100% 50%; }
-    }
-    @keyframes orbFloat1 {
-      0%, 100% { transform: translate(0,0) scale(1); }
-      33%      { transform: translate(40px,-30px) scale(1.1); }
-      66%      { transform: translate(-20px,20px) scale(0.95); }
-    }
-    @keyframes orbFloat2 {
-      0%, 100% { transform: translate(0,0) scale(1); }
-      33%      { transform: translate(-50px,20px) scale(0.9); }
-      66%      { transform: translate(30px,-40px) scale(1.05); }
-    }
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(20px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -100,33 +86,20 @@ async function render() {
     * { box-sizing: border-box; margin: 0; padding: 0; }
     .h { position: fixed; inset: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow-y: auto; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
 
+    /* Static gradient background — orbs baked in as radial gradients,
+       no transform/blur animation, no backdrop-filter, GPU at idle. */
     .h-bg {
       position: fixed; inset: 0; z-index: 0;
-      background: linear-gradient(160deg, #0a0618 0%, #1a1145 30%, #2d1b69 50%, #1a1145 70%, #0a0618 100%);
-      background-size: 200% 200%;
-      animation: bgShift 20s ease infinite;
-    }
-    .h-orb { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; }
-    .h-orb1 { width: 500px; height: 500px; top: -10%; left: 15%;
-              background: radial-gradient(circle, rgba(99,102,241,0.2) 0%, transparent 70%);
-              animation: orbFloat1 15s ease-in-out infinite; }
-    .h-orb2 { width: 400px; height: 400px; bottom: 5%; right: 10%;
-              background: radial-gradient(circle, rgba(168,85,247,0.15) 0%, transparent 70%);
-              animation: orbFloat2 18s ease-in-out infinite; }
-    .h-orb3 { width: 300px; height: 300px; top: 40%; left: 55%;
-              background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%);
-              animation: orbFloat1 22s ease-in-out infinite reverse; }
-    .h-bg::after {
-      content: ''; position: absolute; inset: 0;
-      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      opacity: 0.4; mix-blend-mode: overlay; pointer-events: none;
+      background:
+        radial-gradient(circle at 25% 8%, rgba(99,102,241,0.20) 0%, transparent 38%),
+        radial-gradient(circle at 85% 88%, rgba(168,85,247,0.16) 0%, transparent 38%),
+        radial-gradient(circle at 55% 50%, rgba(59,130,246,0.10) 0%, transparent 26%),
+        linear-gradient(160deg, #0a0618 0%, #1a1145 30%, #2d1b69 50%, #1a1145 70%, #0a0618 100%);
     }
 
     .h-bar {
       position: sticky; top: 0; z-index: 20; height: 38px;
-      background: rgba(10,6,24,0.6);
-      backdrop-filter: blur(30px) saturate(1.8);
-      -webkit-backdrop-filter: blur(30px) saturate(1.8);
+      background: rgba(10,6,24,0.82);
       display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
@@ -145,7 +118,6 @@ async function render() {
       background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.6) 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
-      filter: drop-shadow(0 2px 20px rgba(124,58,237,0.15));
     }
     .h-date { font-size: 16px; color: rgba(255,255,255,0.4); margin-top: 2px; font-weight: 400; letter-spacing: 0.02em; }
     .h-greet { text-align: center; margin: 16px 0 28px; }
@@ -156,10 +128,9 @@ async function render() {
     .h-search-w::before { content: '\u{1F50D}'; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 13px; opacity: 0.3; }
     .h-sinput {
       width: 420px; max-width: 85vw; padding: 13px 18px 13px 44px;
-      background: rgba(255,255,255,0.07);
+      background: rgba(255,255,255,0.09);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 16px; color: #fff; font-size: 14px; font-family: inherit; outline: none;
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .h-sinput::placeholder { color: rgba(255,255,255,0.25); }
@@ -174,9 +145,7 @@ async function render() {
     .h-dock {
       display: flex; justify-content: center; align-items: flex-end; gap: 4px;
       padding: 16px 24px 14px;
-      background: rgba(255,255,255,0.04);
-      backdrop-filter: blur(24px) saturate(1.6);
-      -webkit-backdrop-filter: blur(24px) saturate(1.6);
+      background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 28px;
       position: relative; overflow: visible; flex-wrap: wrap;
@@ -251,8 +220,7 @@ async function render() {
 
     .h-tip {
       position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
-      background: rgba(10,6,24,0.9);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      background: rgba(10,6,24,0.95);
       border: 1px solid rgba(255,255,255,0.1);
       color: #fff; font-size: 12px; font-weight: 600;
       padding: 6px 14px; border-radius: 10px; white-space: nowrap;
@@ -286,6 +254,13 @@ async function render() {
       .h-app-name { opacity: 1; transform: none; font-size: 10.5px; }
       .h-tip { display: none; }
     }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001s !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001s !important;
+      }
+    }
   `
   app.appendChild(style)
 
@@ -294,7 +269,6 @@ async function render() {
 
   const bg = document.createElement('div')
   bg.className = 'h-bg'
-  bg.innerHTML = '<div class="h-orb h-orb1"></div><div class="h-orb h-orb2"></div><div class="h-orb h-orb3"></div>'
   root.appendChild(bg)
 
   const bar = document.createElement('div')
