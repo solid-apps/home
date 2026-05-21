@@ -1,0 +1,413 @@
+// home — a launcher for whatever Solid apps are on this pod.
+//
+// Reads /public/apps/ as an LDP container, lists every app it finds,
+// renders them in a macOS-style magnification dock. Visual lifted
+// from JSS's Solid OS dashboard so it feels like the same suite.
+
+const app = document.getElementById('app')
+
+// Known apps: stable colors + emoji so familiar ones look the part.
+// Anything not listed gets a colour from a hash of its name + the
+// first letter as a glyph.
+const KNOWN = {
+  plaza:      { glyph: '\u{1F4AC}', color: '#7c4dff', color2: '#a78bfa' },
+  chat:       { glyph: '✉️', color: '#06b6d4', color2: '#22d3ee' },
+  vellum:     { glyph: '✍️', color: '#f59e0b', color2: '#fbbf24' },
+  plume:      { glyph: '\u{1FAB6}',  color: '#a855f7', color2: '#c084fc' },
+  taskify:    { glyph: '✅',     color: '#22c55e', color2: '#4ade80' },
+  explorer:   { glyph: '\u{1F4C1}',  color: '#3b82f6', color2: '#60a5fa' },
+  hub:        { glyph: '\u{1F39B}️', color: '#ec4899', color2: '#f472b6' },
+  chrome:     { glyph: '\u{1FA9F}',  color: '#10b981', color2: '#059669' },
+  timeline:   { glyph: '\u{1F4F0}',  color: '#f97316', color2: '#fb923c' },
+  win98:      { glyph: '\u{1F4BB}',  color: '#06b6d4', color2: '#22d3ee' },
+  pdf:        { glyph: '\u{1F4C4}',  color: '#ef4444', color2: '#f87171' },
+  alarm:      { glyph: '⏰',     color: '#fbbf24', color2: '#f59e0b' },
+  playlist:   { glyph: '\u{1F3B5}',  color: '#a855f7', color2: '#c084fc' },
+  mindstr:    { glyph: '\u{1F9E0}',  color: '#a855f7', color2: '#c084fc' },
+  charlie:    { glyph: '\u{1F916}',  color: '#10b981', color2: '#059669' },
+  forum:      { glyph: '\u{1F4AD}',  color: '#ec4899', color2: '#f472b6' },
+  transcribe: { glyph: '\u{1F3A4}',  color: '#06b6d4', color2: '#22d3ee' }
+}
+
+const FALLBACK_COLORS = [
+  ['#7c4dff', '#a78bfa'], ['#06b6d4', '#22d3ee'], ['#f59e0b', '#fbbf24'],
+  ['#22c55e', '#4ade80'], ['#3b82f6', '#60a5fa'], ['#ec4899', '#f472b6'],
+  ['#10b981', '#059669'], ['#f97316', '#fb923c'], ['#a855f7', '#c084fc'],
+  ['#ef4444', '#f87171']
+]
+function pickColor(name) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return FALLBACK_COLORS[h % FALLBACK_COLORS.length]
+}
+
+function describe(name, url) {
+  const known = KNOWN[name.toLowerCase()]
+  if (known) return { name, url, glyph: known.glyph, color: known.color, color2: known.color2 }
+  const [color, color2] = pickColor(name)
+  return { name, url, glyph: (name[0] || '?').toUpperCase(), color, color2 }
+}
+
+async function fetchApps() {
+  try {
+    const r = await fetch('/public/apps/', { headers: { Accept: 'application/ld+json' } })
+    if (!r.ok) return []
+    const doc = await r.json()
+    const contains = doc['ldp:contains'] || doc['http://www.w3.org/ns/ldp#contains'] || doc['contains'] || []
+    const arr = Array.isArray(contains) ? contains : [contains]
+    return arr
+      .map(x => typeof x === 'string' ? x : x?.['@id'])
+      .filter(Boolean)
+      .filter(u => u.endsWith('/'))
+      .map(url => {
+        const segments = url.replace(/\/$/, '').split('/')
+        const name = segments[segments.length - 1]
+        return describe(name, url)
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+  } catch {
+    return []
+  }
+}
+
+async function render() {
+  const now = new Date()
+  const hour = now.getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const apps = await fetchApps()
+
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes bgShift {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    @keyframes orbFloat1 {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33%      { transform: translate(40px,-30px) scale(1.1); }
+      66%      { transform: translate(-20px,20px) scale(0.95); }
+    }
+    @keyframes orbFloat2 {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33%      { transform: translate(-50px,20px) scale(0.9); }
+      66%      { transform: translate(30px,-40px) scale(1.05); }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .h { position: fixed; inset: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow-y: auto; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+
+    .h-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background: linear-gradient(160deg, #0a0618 0%, #1a1145 30%, #2d1b69 50%, #1a1145 70%, #0a0618 100%);
+      background-size: 200% 200%;
+      animation: bgShift 20s ease infinite;
+    }
+    .h-orb { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; }
+    .h-orb1 { width: 500px; height: 500px; top: -10%; left: 15%;
+              background: radial-gradient(circle, rgba(99,102,241,0.2) 0%, transparent 70%);
+              animation: orbFloat1 15s ease-in-out infinite; }
+    .h-orb2 { width: 400px; height: 400px; bottom: 5%; right: 10%;
+              background: radial-gradient(circle, rgba(168,85,247,0.15) 0%, transparent 70%);
+              animation: orbFloat2 18s ease-in-out infinite; }
+    .h-orb3 { width: 300px; height: 300px; top: 40%; left: 55%;
+              background: radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%);
+              animation: orbFloat1 22s ease-in-out infinite reverse; }
+    .h-bg::after {
+      content: ''; position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: 0.4; mix-blend-mode: overlay; pointer-events: none;
+    }
+
+    .h-bar {
+      position: sticky; top: 0; z-index: 20; height: 38px;
+      background: rgba(10,6,24,0.6);
+      backdrop-filter: blur(30px) saturate(1.8);
+      -webkit-backdrop-filter: blur(30px) saturate(1.8);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .h-logo { font-weight: 800; font-size: 13px; color: #fff; letter-spacing: 0.04em; }
+    .h-bar-r { display: flex; align-items: center; gap: 14px; color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500; }
+    .h-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 4px; box-shadow: 0 0 8px #22c55e88; }
+
+    .h-content {
+      position: relative; z-index: 5; max-width: 900px; margin: 0 auto; padding: 40px 24px 80px;
+      animation: fadeUp 0.6s ease-out;
+    }
+
+    .h-clock { text-align: center; margin-bottom: 4px; }
+    .h-time {
+      font-size: 96px; font-weight: 100; letter-spacing: -0.04em; line-height: 1;
+      background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.6) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 2px 20px rgba(124,58,237,0.15));
+    }
+    .h-date { font-size: 16px; color: rgba(255,255,255,0.4); margin-top: 2px; font-weight: 400; letter-spacing: 0.02em; }
+    .h-greet { text-align: center; margin: 16px 0 28px; }
+    .h-greet h1 { font-size: 20px; font-weight: 300; color: rgba(255,255,255,0.55); }
+
+    .h-search { display: flex; justify-content: center; margin-bottom: 32px; }
+    .h-search-w { position: relative; }
+    .h-search-w::before { content: '\u{1F50D}'; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 13px; opacity: 0.3; }
+    .h-sinput {
+      width: 420px; max-width: 85vw; padding: 13px 18px 13px 44px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; color: #fff; font-size: 14px; font-family: inherit; outline: none;
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .h-sinput::placeholder { color: rgba(255,255,255,0.25); }
+    .h-sinput:focus {
+      background: rgba(255,255,255,0.11);
+      border-color: rgba(124,58,237,0.4);
+      box-shadow: 0 0 0 4px rgba(124,58,237,0.1), 0 8px 32px rgba(0,0,0,0.2);
+      transform: scale(1.01);
+    }
+
+    .h-sec { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; padding-left: 4px; }
+    .h-dock {
+      display: flex; justify-content: center; align-items: flex-end; gap: 4px;
+      padding: 16px 24px 14px;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(24px) saturate(1.6);
+      -webkit-backdrop-filter: blur(24px) saturate(1.6);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 28px;
+      position: relative; overflow: visible; flex-wrap: wrap;
+    }
+    .h-dock::before {
+      content: ''; position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    }
+
+    .h-app {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8px 8px 6px; border-radius: 16px;
+      cursor: pointer; text-decoration: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .h-app:hover { transform: translateY(-8px); }
+    .h-app:active { transform: scale(0.92); }
+    .h-app.hidden { display: none; }
+
+    .h-icon {
+      width: 54px; height: 54px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; position: relative;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow:
+        0 1px 2px rgba(0,0,0,0.3),
+        0 4px 8px rgba(0,0,0,0.2),
+        0 10px 20px rgba(0,0,0,0.15),
+        inset 0 1px 0 rgba(255,255,255,0.3),
+        inset 0 -2px 4px rgba(0,0,0,0.1);
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .h-icon::before {
+      content: '';
+      position: absolute; top: 1px; left: 1px; right: 1px; height: 50%;
+      border-radius: 13px 13px 40% 40%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.15) 40%, rgba(255,255,255,0) 100%);
+      pointer-events: none;
+    }
+    .h-icon::after {
+      content: ''; position: absolute; inset: 0; border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-bottom-color: rgba(0,0,0,0.1);
+      pointer-events: none;
+    }
+    .h-app:hover .h-icon {
+      box-shadow:
+        0 2px 4px rgba(0,0,0,0.3),
+        0 8px 16px rgba(0,0,0,0.2),
+        0 16px 32px rgba(0,0,0,0.15),
+        0 0 30px var(--glow),
+        inset 0 1px 0 rgba(255,255,255,0.35),
+        inset 0 -2px 4px rgba(0,0,0,0.1);
+      transform: scale(1.12);
+    }
+
+    .h-app-dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      margin-top: 6px; transition: all 0.2s;
+    }
+    .h-app:hover .h-app-dot { background: #fff; box-shadow: 0 0 6px rgba(255,255,255,0.5); }
+
+    .h-app-name {
+      font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.5);
+      text-align: center; margin-top: 4px; transition: all 0.2s;
+    }
+    .h-app:hover .h-app-name { color: rgba(255,255,255,0.9); }
+
+    .h-tip {
+      position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
+      background: rgba(10,6,24,0.9);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #fff; font-size: 12px; font-weight: 600;
+      padding: 6px 14px; border-radius: 10px; white-space: nowrap;
+      pointer-events: none; opacity: 0; transition: opacity 0.15s, transform 0.15s;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .h-tip::after {
+      content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+      border: 5px solid transparent; border-top-color: rgba(10,6,24,0.9);
+    }
+    .h-app:hover .h-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    .h-empty {
+      text-align: center; padding: 40px 24px;
+      color: rgba(255,255,255,0.4); font-size: 14px;
+      max-width: 480px; margin: 0 auto;
+    }
+    .h-empty strong { color: #fff; font-size: 16px; display: block; margin-bottom: 8px; font-weight: 600; }
+    .h-empty code {
+      display: inline-block; margin-top: 12px; padding: 6px 12px;
+      background: rgba(255,255,255,0.06); border-radius: 8px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    @media (max-width: 600px) {
+      .h-content { padding: 24px 16px 60px; }
+      .h-time { font-size: 64px; }
+      .h-dock { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 16px; border-radius: 24px; }
+      .h-icon { width: 48px; height: 48px; font-size: 22px; border-radius: 13px; }
+      .h-app-name { opacity: 1; transform: none; font-size: 10.5px; }
+      .h-tip { display: none; }
+    }
+  `
+  app.appendChild(style)
+
+  const root = document.createElement('div')
+  root.className = 'h'
+
+  const bg = document.createElement('div')
+  bg.className = 'h-bg'
+  bg.innerHTML = '<div class="h-orb h-orb1"></div><div class="h-orb h-orb2"></div><div class="h-orb h-orb3"></div>'
+  root.appendChild(bg)
+
+  const bar = document.createElement('div')
+  bar.className = 'h-bar'
+  bar.innerHTML = '<span class="h-logo">home</span>'
+  const barR = document.createElement('div')
+  barR.className = 'h-bar-r'
+  barR.innerHTML = '<span><span class="h-dot"></span>' + (apps.length) + ' apps</span>'
+  const barClock = document.createElement('span')
+  barR.appendChild(barClock)
+  bar.appendChild(barR)
+  root.appendChild(bar)
+
+  const content = document.createElement('div')
+  content.className = 'h-content'
+
+  const clock = document.createElement('div')
+  clock.className = 'h-clock'
+  const timeEl = document.createElement('div'); timeEl.className = 'h-time'; clock.appendChild(timeEl)
+  const dateEl = document.createElement('div'); dateEl.className = 'h-date'; clock.appendChild(dateEl)
+  content.appendChild(clock)
+
+  const tick = () => {
+    const now = new Date()
+    timeEl.textContent = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    dateEl.textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+    barClock.textContent = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  }
+  tick(); setInterval(tick, 10000)
+
+  const greet = document.createElement('div')
+  greet.className = 'h-greet'
+  greet.innerHTML = '<h1>' + greeting + '</h1>'
+  content.appendChild(greet)
+
+  const search = document.createElement('div')
+  search.className = 'h-search'
+  const sw = document.createElement('div'); sw.className = 'h-search-w'
+  const si = document.createElement('input')
+  si.className = 'h-sinput'
+  si.placeholder = 'Search apps…'
+  si.type = 'text'
+  sw.appendChild(si); search.appendChild(sw)
+  content.appendChild(search)
+
+  const sec = document.createElement('div')
+  sec.className = 'h-sec'
+  sec.textContent = 'Apps'
+  content.appendChild(sec)
+
+  if (apps.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'h-empty'
+    empty.innerHTML = '<strong>No apps installed yet.</strong>' +
+      'Drop apps into <code>/public/apps/</code> on this pod and they\'ll appear here.' +
+      '<br><code>jspod install --bundle teams</code>'
+    content.appendChild(empty)
+  } else {
+    const dock = document.createElement('div')
+    dock.className = 'h-dock'
+    for (const a of apps) {
+      const el = document.createElement('a')
+      el.className = 'h-app'
+      el.href = a.url
+      el.dataset.name = a.name.toLowerCase()
+
+      const icon = document.createElement('div')
+      icon.className = 'h-icon'
+      icon.style.background = 'linear-gradient(145deg, ' + a.color2 + ', ' + a.color + ')'
+      icon.style.setProperty('--glow', a.color + '44')
+      icon.textContent = a.glyph
+      el.appendChild(icon)
+
+      const dot = document.createElement('div'); dot.className = 'h-app-dot'; el.appendChild(dot)
+      const name = document.createElement('div'); name.className = 'h-app-name'; name.textContent = a.name; el.appendChild(name)
+      const tip = document.createElement('div'); tip.className = 'h-tip'; tip.textContent = a.name; el.appendChild(tip)
+
+      dock.appendChild(el)
+    }
+    content.appendChild(dock)
+
+    // macOS-style magnification on hover
+    dock.addEventListener('mousemove', (e) => {
+      const mouseX = e.clientX
+      for (const a of dock.querySelectorAll('.h-app')) {
+        const rect = a.getBoundingClientRect()
+        const center = rect.left + rect.width / 2
+        const dist = Math.abs(mouseX - center)
+        const maxDist = 120
+        if (dist < maxDist) {
+          const scale = 1 + 0.2 * (1 - dist / maxDist)
+          const lift = -6 * (1 - dist / maxDist)
+          a.style.transform = 'translateY(' + lift + 'px) scale(' + scale + ')'
+        } else {
+          a.style.transform = ''
+        }
+      }
+    })
+    dock.addEventListener('mouseleave', () => {
+      for (const a of dock.querySelectorAll('.h-app')) a.style.transform = ''
+    })
+
+    si.addEventListener('input', () => {
+      const q = si.value.toLowerCase().trim()
+      for (const el of dock.querySelectorAll('.h-app')) {
+        const match = !q || el.dataset.name.includes(q)
+        el.classList.toggle('hidden', !match)
+      }
+    })
+  }
+
+  root.appendChild(content)
+  app.appendChild(root)
+}
+
+render()
