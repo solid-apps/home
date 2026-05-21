@@ -48,6 +48,39 @@ function describe(name, url) {
   return { name, url, glyph: (name[0] || '?').toUpperCase(), color, color2 }
 }
 
+// Try the app's manifest.json. If it has theme_color + a 192px icon we
+// prefer those over the hardcoded KNOWN map — each app brands itself.
+async function fetchManifest(appUrl) {
+  try {
+    const r = await fetch(appUrl + 'manifest.json')
+    if (!r.ok) return null
+    return await r.json()
+  } catch {
+    return null
+  }
+}
+
+// Merge manifest data onto the base descriptor. If manifest has an
+// icon URL we set `iconUrl` and the renderer uses an <img>; otherwise
+// we keep the glyph + gradient fallback.
+async function enrichWithManifest(base) {
+  const m = await fetchManifest(base.url)
+  if (!m) return base
+  const icons = m.icons || []
+  // Prefer a 192px icon — typical "small enough to be cheap, large
+  // enough to look sharp at the dock's 54px tile + retina".
+  const pick = icons.find(i => (i.sizes || '').includes('192')) ||
+               icons.find(i => (i.sizes || '').includes('512')) ||
+               icons[0]
+  const out = { ...base }
+  if (m.short_name || m.name) out.name = m.short_name || m.name
+  if (m.theme_color) { out.color = m.theme_color; out.color2 = m.theme_color }
+  if (pick && pick.src) {
+    try { out.iconUrl = new URL(pick.src, base.url).toString() } catch {}
+  }
+  return out
+}
+
 async function fetchApps() {
   try {
     const r = await fetch('/public/apps/', { headers: { Accept: 'application/ld+json' } })
@@ -55,7 +88,7 @@ async function fetchApps() {
     const doc = await r.json()
     const contains = doc['ldp:contains'] || doc['http://www.w3.org/ns/ldp#contains'] || doc['contains'] || []
     const arr = Array.isArray(contains) ? contains : [contains]
-    return arr
+    const bases = arr
       .map(x => typeof x === 'string' ? x : x?.['@id'])
       .filter(Boolean)
       .filter(u => u.endsWith('/'))
@@ -64,7 +97,9 @@ async function fetchApps() {
         const name = segments[segments.length - 1]
         return describe(name, url)
       })
-      .sort((a, b) => a.name.localeCompare(b.name))
+    // Read each app's manifest.json in parallel for theme + icon.
+    const enriched = await Promise.all(bases.map(enrichWithManifest))
+    return enriched.sort((a, b) => a.name.localeCompare(b.name))
   } catch {
     return []
   }
@@ -107,13 +142,16 @@ async function fetchFallbackBundle() {
     if (!r.ok) return []
     const doc = await r.json()
     const items = doc['schema:itemListElement'] || doc['itemListElement'] || []
-    return items
+    const bases = items
       .map(item => typeof item === 'string' ? item : item?.['app:spec'])
       .filter(Boolean)
       .map(spec => {
         const { name, url } = parseSpec(spec)
         return { ...describe(name, url), preview: true }
       })
+    // Pull each gh-pages app's manifest too so preview tiles get the
+    // app's own brand instead of our hash-derived fallback.
+    return Promise.all(bases.map(enrichWithManifest))
   } catch {
     return []
   }
@@ -265,6 +303,12 @@ async function render() {
       border-radius: 13px 13px 40% 40%;
       background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.15) 40%, rgba(255,255,255,0) 100%);
       pointer-events: none;
+    }
+    .h-icon img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      border-radius: 14px;
+      display: block;
     }
     .h-icon::after {
       content: ''; position: absolute; inset: 0; border-radius: 14px;
@@ -426,9 +470,19 @@ async function render() {
 
       const icon = document.createElement('div')
       icon.className = 'h-icon'
-      icon.style.background = 'linear-gradient(145deg, ' + a.color2 + ', ' + a.color + ')'
       icon.style.setProperty('--glow', a.color + '44')
-      icon.textContent = a.glyph
+      if (a.iconUrl) {
+        // App declared its own icon via manifest.json — use it directly.
+        const img = document.createElement('img')
+        img.src = a.iconUrl
+        img.alt = ''
+        img.loading = 'lazy'
+        icon.appendChild(img)
+        icon.style.background = a.color
+      } else {
+        icon.style.background = 'linear-gradient(145deg, ' + a.color2 + ', ' + a.color + ')'
+        icon.textContent = a.glyph
+      }
       el.appendChild(icon)
 
       const dot = document.createElement('div'); dot.className = 'h-app-dot'; el.appendChild(dot)
