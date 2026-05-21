@@ -70,11 +70,65 @@ async function fetchApps() {
   }
 }
 
+// Parse `app:spec` strings the way `jspod install` does. Returns
+// the renamed pod-path name (what would appear under /public/apps/)
+// plus the canonical gh-pages URL of the app for preview links.
+function parseSpec(input) {
+  let base = input
+  let renameName = null
+  const eqIx = base.lastIndexOf('=')
+  if (eqIx > 0) { renameName = base.slice(eqIx + 1); base = base.slice(0, eqIx) }
+  const hashIx = base.lastIndexOf('#')
+  if (hashIx > 0) base = base.slice(0, hashIx)
+  let name, url
+  if (/^https?:\/\//.test(base)) {
+    name = base.replace(/\/$/, '').split('/').pop()
+    url = base.endsWith('/') ? base : base + '/'
+  } else if (base.includes('/')) {
+    const [org, ...rest] = base.split('/')
+    const repo = rest.join('/')
+    name = repo.split('/').pop()
+    url = `https://${org}.github.io/${repo}/`
+  } else {
+    name = base
+    url = `https://solid-apps.github.io/${base}/`
+  }
+  if (renameName) name = renameName
+  return { name, url }
+}
+
+// Fetch the canonical "jspod" bundle as a preview when the local
+// pod has no apps installed (or when home is being viewed from
+// gh-pages directly with no pod to read from).
+async function fetchFallbackBundle() {
+  const FALLBACK_URL = 'https://raw.githubusercontent.com/solid-apps/bundles/HEAD/jspod.jsonld'
+  try {
+    const r = await fetch(FALLBACK_URL)
+    if (!r.ok) return []
+    const doc = await r.json()
+    const items = doc['schema:itemListElement'] || doc['itemListElement'] || []
+    return items
+      .map(item => typeof item === 'string' ? item : item?.['app:spec'])
+      .filter(Boolean)
+      .map(spec => {
+        const { name, url } = parseSpec(spec)
+        return { ...describe(name, url), preview: true }
+      })
+  } catch {
+    return []
+  }
+}
+
 async function render() {
   const now = new Date()
   const hour = now.getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-  const apps = await fetchApps()
+  let apps = await fetchApps()
+  let preview = false
+  if (apps.length === 0) {
+    apps = await fetchFallbackBundle()
+    preview = apps.length > 0
+  }
 
   const style = document.createElement('style')
   style.textContent = `
@@ -165,6 +219,30 @@ async function render() {
     .h-app:hover { transform: translateY(-8px); }
     .h-app:active { transform: scale(0.92); }
     .h-app.hidden { display: none; }
+
+    /* Preview apps (fallback bundle, not yet installed on this pod):
+       subtle dim so they read as "not yours yet" without losing the
+       dock's liveliness. Hover restores full color. */
+    .h-app-preview .h-icon { opacity: 0.7; filter: saturate(0.7); transition: opacity 0.2s, filter 0.2s; }
+    .h-app-preview .h-app-name { color: rgba(255,255,255,0.35); }
+    .h-app-preview:hover .h-icon { opacity: 1; filter: saturate(1); }
+    .h-app-preview:hover .h-app-name { color: rgba(255,255,255,0.9); }
+    .h-preview-note {
+      text-align: center;
+      font-size: 12px;
+      color: rgba(255,255,255,0.45);
+      margin: -8px 0 20px;
+      letter-spacing: 0.02em;
+    }
+    .h-preview-note strong { color: rgba(255,255,255,0.7); font-weight: 600; }
+    .h-preview-note code {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 11.5px;
+      background: rgba(255,255,255,0.06);
+      padding: 2px 8px;
+      border-radius: 6px;
+      color: rgba(255,255,255,0.75);
+    }
 
     .h-icon {
       width: 54px; height: 54px; border-radius: 14px;
@@ -276,7 +354,7 @@ async function render() {
   bar.innerHTML = '<span class="h-logo">home</span>'
   const barR = document.createElement('div')
   barR.className = 'h-bar-r'
-  barR.innerHTML = '<span><span class="h-dot"></span>' + (apps.length) + ' apps</span>'
+  barR.innerHTML = '<span><span class="h-dot"></span>' + apps.length + (preview ? ' demos' : ' apps') + '</span>'
   const barClock = document.createElement('span')
   barR.appendChild(barClock)
   bar.appendChild(barR)
@@ -316,8 +394,15 @@ async function render() {
 
   const sec = document.createElement('div')
   sec.className = 'h-sec'
-  sec.textContent = 'Apps'
+  sec.textContent = preview ? 'Preview' : 'Apps'
   content.appendChild(sec)
+
+  if (preview) {
+    const note = document.createElement('div')
+    note.className = 'h-preview-note'
+    note.innerHTML = '<strong>No apps installed yet.</strong> Try the live demos below, then run <code>jspod install --bundle jspod</code> to make them yours.'
+    content.appendChild(note)
+  }
 
   if (apps.length === 0) {
     const empty = document.createElement('div')
@@ -331,8 +416,12 @@ async function render() {
     dock.className = 'h-dock'
     for (const a of apps) {
       const el = document.createElement('a')
-      el.className = 'h-app'
+      el.className = 'h-app' + (preview ? ' h-app-preview' : '')
       el.href = a.url
+      if (preview) {
+        el.target = '_blank'
+        el.rel = 'noopener noreferrer'
+      }
       el.dataset.name = a.name.toLowerCase()
 
       const icon = document.createElement('div')
@@ -344,7 +433,7 @@ async function render() {
 
       const dot = document.createElement('div'); dot.className = 'h-app-dot'; el.appendChild(dot)
       const name = document.createElement('div'); name.className = 'h-app-name'; name.textContent = a.name; el.appendChild(name)
-      const tip = document.createElement('div'); tip.className = 'h-tip'; tip.textContent = a.name; el.appendChild(tip)
+      const tip = document.createElement('div'); tip.className = 'h-tip'; tip.textContent = a.name + (preview ? ' (demo)' : ''); el.appendChild(tip)
 
       dock.appendChild(el)
     }
