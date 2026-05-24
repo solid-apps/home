@@ -201,6 +201,8 @@ async function render() {
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
     .h-logo { font-weight: 800; font-size: 13px; color: #fff; letter-spacing: 0.04em; }
+    .h-root { margin-left: 12px; color: rgba(255,255,255,0.5); font-size: 12px; font-weight: 600; text-decoration: none; letter-spacing: 0.03em; }
+    .h-root:hover { color: #fff; }
     .h-bar-r { display: flex; align-items: center; gap: 14px; color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500; }
     .h-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 4px; box-shadow: 0 0 8px #22c55e88; }
 
@@ -401,6 +403,7 @@ async function render() {
   const bar = document.createElement('div')
   bar.className = 'h-bar'
   bar.innerHTML = '<span class="h-logo">home</span>'
+    + '<a class="h-root" href="../../../" title="Go to your pod root">↑ root</a>'
   const barR = document.createElement('div')
   barR.className = 'h-bar-r'
   barR.innerHTML = '<span><span class="h-dot"></span>' + apps.length + (preview ? ' demos' : ' apps') + '</span>'
