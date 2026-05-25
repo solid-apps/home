@@ -219,6 +219,13 @@ async function render() {
       background-clip: text;
     }
     .h-date { font-size: 16px; color: rgba(255,255,255,0.4); margin-top: 2px; font-weight: 400; letter-spacing: 0.02em; }
+    .h-time-row { display: inline-flex; align-items: center; justify-content: center; gap: 18px; }
+    .h-ring-wrap { width: 56px; height: 56px; flex: 0 0 auto; }
+    .h-ring { width: 56px; height: 56px; display: block; }
+    .h-ring-bg { stroke: rgba(255,255,255,0.12); }
+    .h-ring-prog { stroke: #a78bfa; transition: stroke-dashoffset 0.8s ease; }
+    .h-ring-hand { stroke: #fff; stroke-linecap: round; transition: transform 0.8s ease; transform-origin: 36px 36px; }
+    .h-ring-hub { fill: #fff; }
     .h-greet { text-align: center; margin: 16px 0 28px; }
     .h-greet h1 { font-size: 20px; font-weight: 300; color: rgba(255,255,255,0.55); }
 
@@ -417,7 +424,22 @@ async function render() {
 
   const clock = document.createElement('div')
   clock.className = 'h-clock'
-  const timeEl = document.createElement('div'); timeEl.className = 'h-time'; clock.appendChild(timeEl)
+  const row = document.createElement('div'); row.className = 'h-time-row'
+  const timeEl = document.createElement('div'); timeEl.className = 'h-time'; row.appendChild(timeEl)
+  // Hour dial: a 60-minute progress ring + hand showing how far through the
+  // current hour (frac = minutes:seconds / 1 hour). Borrowed from the /hour/ clock.
+  const ringWrap = document.createElement('div'); ringWrap.className = 'h-ring-wrap'
+  ringWrap.innerHTML = '<svg class="h-ring" viewBox="0 0 72 72">'
+    + '<circle class="h-ring-bg" cx="36" cy="36" r="32" fill="none" stroke-width="3"/>'
+    + '<circle class="h-ring-prog" cx="36" cy="36" r="32" fill="none" stroke-width="3"'
+    + ' stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06" transform="rotate(-90 36 36)"/>'
+    + '<line class="h-ring-hand" x1="36" y1="36" x2="36" y2="10" stroke-width="2"/>'
+    + '<circle class="h-ring-hub" cx="36" cy="36" r="2.5"/>'
+    + '</svg>'
+  row.appendChild(ringWrap)
+  clock.appendChild(row)
+  const ringProg = ringWrap.querySelector('.h-ring-prog')
+  const ringHand = ringWrap.querySelector('.h-ring-hand')
   const dateEl = document.createElement('div'); dateEl.className = 'h-date'; clock.appendChild(dateEl)
   content.appendChild(clock)
 
@@ -426,6 +448,9 @@ async function render() {
     timeEl.textContent = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     dateEl.textContent = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
     barClock.textContent = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    const frac = (now.getMinutes() * 60 + now.getSeconds()) / 3600
+    ringProg.setAttribute('stroke-dashoffset', (201.06 * (1 - frac)).toFixed(2))
+    ringHand.style.transform = 'rotate(' + (frac * 360).toFixed(2) + 'deg)'
   }
   tick(); setInterval(tick, 10000)
 
